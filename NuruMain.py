@@ -1,3 +1,20 @@
+import os
+import sys
+import google.generativeai as genai
+from dotenv import load_dotenv
+
+load_dotenv()
+
+API_KEY = os.getenv("GOOGLE_API_KEY")
+MODEL_NAME = os.getenv("MODEL_NAME", "gemini-3.6-flash")
+
+if not API_KEY:
+    print("ERROR: No GOOGLE_API_KEY found.")
+    print('Create a .env file with: GOOGLE_API_KEY="your-key-here"')
+    sys.exit(1)
+
+genai.configure(api_key=API_KEY)
+model = genai.GenerativeModel(MODEL_NAME)
 # ---------------------------------------------------------------
 # NURU PRODUCT LINE MAP (shared context for the analysis prompt)
 # ---------------------------------------------------------------
@@ -81,3 +98,25 @@ Return exactly this JSON shape:
 }}
 """
     return system_prompt, user_prompt
+# ---------------------------------------------------------------
+# CORE API CALL FUNCTION (Gemini)
+# ---------------------------------------------------------------
+def call_ai(system_prompt: str, user_prompt: str) -> str:
+    """
+    Sends one request to the Gemini API and returns the raw text reply.
+    Gemini doesn't take a separate "system" argument the way some
+    other APIs do, so we combine the role/rules into one prompt string.
+    """
+    full_prompt = f"{system_prompt}\n\n{user_prompt}"
+    response = model.generate_content(full_prompt)
+    return response.text
+
+
+def analyse_feedback(feedback_text: str) -> str:
+    """
+    Runs Stage 1: builds the R-T-C-C-O analysis prompt and calls the
+    AI. Returns the raw (unparsed) text response — JSON parsing comes
+    in the next commit.
+    """
+    system_prompt, user_prompt = build_analysis_prompt(feedback_text)
+    return call_ai(system_prompt, user_prompt)
