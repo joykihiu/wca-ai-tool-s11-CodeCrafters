@@ -1,7 +1,9 @@
 import os
 import sys
+import json
 import google.generativeai as genai
 from dotenv import load_dotenv
+
 
 load_dotenv()
 
@@ -112,11 +114,27 @@ def call_ai(system_prompt: str, user_prompt: str) -> str:
     return response.text
 
 
-def analyse_feedback(feedback_text: str) -> str:
+def analyse_feedback(feedback_text: str) -> dict:
     """
-    Runs Stage 1: builds the R-T-C-C-O analysis prompt and calls the
-    AI. Returns the raw (unparsed) text response — JSON parsing comes
-    in the next commit.
+    Runs Stage 1 end-to-end: builds the R-T-C-C-O prompt, calls the
+    AI, and parses the JSON response into a Python dictionary.
     """
     system_prompt, user_prompt = build_analysis_prompt(feedback_text)
-    return call_ai(system_prompt, user_prompt)
+    raw_response = call_ai(system_prompt, user_prompt)
+    return parse_json_safely(raw_response)
+# ---------------------------------------------------------------
+# JSON PARSING FOR THE ANALYSIS RESPONSE
+# ---------------------------------------------------------------
+def parse_json_safely(raw_text: str) -> dict:
+    """
+    Attempts to parse a string as JSON. Models sometimes wrap JSON in
+```json ... ``` code fences, so we strip those first.
+    Raises json.JSONDecodeError if the text still isn't valid JSON —
+    the caller is responsible for catching that (Shee's error
+    handling wraps this).
+    """
+    cleaned = raw_text.strip()
+    if cleaned.startswith("```"):
+        cleaned = cleaned.strip("`")
+        cleaned = cleaned.replace("json", "", 1).strip()
+    return json.loads(cleaned)
