@@ -138,3 +138,70 @@ def parse_json_safely(raw_text: str) -> dict:
         cleaned = cleaned.strip("`")
         cleaned = cleaned.replace("json", "", 1).strip()
     return json.loads(cleaned)
+# ---------------------------------------------------------------
+# STAGE 2 — TURN ANALYSIS INTO ACTION (R-T-C-C-O PROMPT)
+# ---------------------------------------------------------------
+
+NURU_BRAND_GUARDRAILS = """
+- Never claim a product cures, treats, or guarantees a medical
+  outcome — only that it supports, manages, or improves a condition.
+- Never describe or suggest any Nuru product as "bleaching" or
+  "skin-lightening" — Nuru Even is always non-bleaching brightening.
+- Never quote a specific shilling price — use general terms only
+  (e.g. "accessible", "pocket-money-friendly").
+- Never state or imply PPB/KEBS registration unless confirmed.
+- For severe or persistent concerns, recommend seeing a
+  dermatologist or pharmacist rather than relying on the product alone.
+- Tone: warm, plain-spoken, reassuring — like a knowledgeable
+  pharmacist or older sister, not a lab report.
+"""
+
+def build_action_prompt(feedback_text: str, analysis: dict) -> tuple[str, str]:
+    """
+    Builds the Stage 2 prompt. Takes Stage 1's analysis as context
+    and asks the AI for a suggested customer reply plus an internal
+    action plan.
+    """
+    system_prompt = (
+        "You are the Customer Experience Lead at Nuru, a Kenyan "
+        "clinical & dermo-cosmetic skincare and haircare brand. You "
+        "turn customer insight reports into practical actions: an "
+        "on-brand reply Nuru can send, and internal tasks for the team."
+    )
+
+    user_prompt = f"""
+# T - Task
+Using the analysis below (already produced by an insight analyst),
+write a suggested customer reply and a short internal action plan.
+
+# C - Context
+Original customer feedback:
+\"\"\"{feedback_text}\"\"\"
+
+Stage 1 analysis (already completed):
+{json.dumps(analysis, indent=2)}
+
+Nuru's brand voice and regulatory guardrails — the reply MUST follow
+these:
+{NURU_BRAND_GUARDRAILS}
+
+# C - Constraints
+- Respond with VALID JSON ONLY. No commentary, no markdown fences.
+- The customer reply must follow Nuru's brand voice and guardrails
+  above, and be under 80 words.
+- internal_action_items must be an array of 1-4 short, concrete tasks.
+- priority_level must be one of: "low", "medium", "high"
+- assigned_team must be one of: "Product", "Customer Care",
+  "Quality Control", "Marketing"
+
+# O - Output format
+Return exactly this JSON shape:
+{{
+  "priority_level": "string",
+  "assigned_team": "string",
+  "suggested_customer_reply": "string",
+  "internal_action_items": ["string"],
+  "business_insight": "one sentence takeaway for management"
+}}
+"""
+    return system_prompt, user_prompt
