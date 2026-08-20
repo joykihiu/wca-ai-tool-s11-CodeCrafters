@@ -284,10 +284,11 @@ Return exactly this JSON shape:
 """
     return system_prompt, user_prompt 
 
-def generate_action_plan(feedback_text: str, analysis: dict) -> str:
+def generate_action_plan(feedback_text: str, analysis: dict) -> dict:
     """
-    Runs Stage 2: builds the action prompt using Stage 1's analysis,
-    and calls the AI. Returns the raw (unparsed) text response.
+    Runs Stage 2 end-to-end: builds the action prompt, calls the AI,
+    and parses the JSON response into a Python dictionary.
     """
     system_prompt, user_prompt = build_action_prompt(feedback_text, analysis)
-    return call_ai(system_prompt, user_prompt)
+    raw_response = call_ai(system_prompt, user_prompt)
+    return parse_json_safely(raw_response)
