@@ -283,14 +283,26 @@ if __name__ == "__main__":
         # STAGE 1
         analysis = analyse_feedback(feedback)
 
-        print("\n--- CUSTOMER FEEDBACK ANALYSIS ---")
+        print("\n=== STAGE 1: ANALYSIS ===")
+        print(f"Sentiment: {analysis.get('overall_sentiment')} "
+              f"(score: {analysis.get('sentiment_score')})")
+        print(f"Product line: {analysis.get('product_line_match')}")
+        print(f"Urgency: {analysis.get('urgency_level')}")
+        print(f"Summary: {analysis.get('summary')}")
+        print("\nFull JSON:")
         print(json.dumps(analysis, indent=2))
 
         # STAGE 2
         action_plan = generate_action_plan(feedback, analysis)
 
-        print("\n--- ACTION PLAN ---")
+        print("\n=== STAGE 2: RECOMMENDED ACTION ===")
+        print(f"Priority: {action_plan.get('priority_level')} | "
+              f"Team: {action_plan.get('assigned_team')}")
+        print(f"Suggested reply: {action_plan.get('suggested_customer_reply')}")
+        print("\nFull JSON:")
         print(json.dumps(action_plan, indent=2))
+
+  
 
         # Combine Stage 1 and Stage 2 results
         final_result = {
