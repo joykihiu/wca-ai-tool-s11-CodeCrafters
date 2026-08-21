@@ -193,30 +193,8 @@ def analyse_feedback(feedback_text: str) -> dict:
         system_prompt,
         user_prompt
     )
-
     return parse_json_safely(raw_response)
-
-
 # ---------------------------------------------------------------
-# SIMPLE TEST
-# ---------------------------------------------------------------
-
-if __name__ == "__main__":
-
-    feedback = input("\nEnter customer feedback: ")
-
-    try:
-        result = analyse_feedback(feedback)
-
-        print("\n--- CUSTOMER FEEDBACK ANALYSIS ---")
-        print(json.dumps(result, indent=2))
-
-    except json.JSONDecodeError:
-        print("\nERROR: Gemini returned invalid JSON.")
-
-    except Exception as error:
-        print(f"\nERROR: {error}")
-   # ---------------------------------------------------------------
 # STAGE 2 — TURN ANALYSIS INTO ACTION (R-T-C-C-O PROMPT)
 # ---------------------------------------------------------------
 
@@ -282,7 +260,8 @@ Return exactly this JSON shape:
   "business_insight": "one sentence takeaway for management"
 }}
 """
-    return system_prompt, user_prompt 
+    return system_prompt, user_prompt
+
 
 def generate_action_plan(feedback_text: str, analysis: dict) -> dict:
     """
@@ -292,3 +271,42 @@ def generate_action_plan(feedback_text: str, analysis: dict) -> dict:
     system_prompt, user_prompt = build_action_prompt(feedback_text, analysis)
     raw_response = call_ai(system_prompt, user_prompt)
     return parse_json_safely(raw_response)
+if __name__ == "__main__":
+
+    feedback = input("\nEnter customer feedback: ").strip()
+
+    if not feedback:
+        print("\nERROR: Customer feedback cannot be empty.")
+        sys.exit(1)
+
+    try:
+        # STAGE 1
+        analysis = analyse_feedback(feedback)
+
+        print("\n--- CUSTOMER FEEDBACK ANALYSIS ---")
+        print(json.dumps(analysis, indent=2))
+
+        # STAGE 2
+        action_plan = generate_action_plan(feedback, analysis)
+
+        print("\n--- ACTION PLAN ---")
+        print(json.dumps(action_plan, indent=2))
+
+        # Combine Stage 1 and Stage 2 results
+        final_result = {
+            "feedback": feedback,
+            "analysis": analysis,
+            "action_plan": action_plan
+        }
+
+        # Save final result to JSON
+        with open("nuru_result.json", "w", encoding="utf-8") as file:
+            json.dump(final_result, file, indent=2, ensure_ascii=False)
+
+        print("\nResult successfully saved to nuru_result.json")
+
+    except json.JSONDecodeError:
+        print("\nERROR: Gemini returned invalid JSON.")
+
+    except Exception as error:
+        print(f"\nERROR: Something went wrong: {error}") 
