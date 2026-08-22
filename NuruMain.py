@@ -1,25 +1,40 @@
 import os
 import sys
 import json
-import google.generativeai as genai
 from dotenv import load_dotenv
+from google import genai
+from google.genai import types
 
 
+# ---------------------------------------------------------------
+# GEMINI CLIENT SETUP
+# ---------------------------------------------------------------
+
+# Load environment variables from .env
 load_dotenv()
 
-API_KEY = os.getenv("GOOGLE_API_KEY")
+# Get the Gemini API key
+API_KEY = os.getenv("GEMINI_API_KEY")
+
+
 MODEL_NAME = os.getenv("MODEL_NAME", "gemini-3.6-flash")
 
+# Make sure the API key was found
 if not API_KEY:
-    print("ERROR: No GOOGLE_API_KEY found.")
-    print('Create a .env file with: GOOGLE_API_KEY="your-key-here"')
+    print("ERROR: GEMINI_API_KEY was not found in .env")
+    print('Create a .env file with: GEMINI_API_KEY="your-key-here"')
     sys.exit(1)
 
-genai.configure(api_key=API_KEY)
-model = genai.GenerativeModel(MODEL_NAME)
+# Create the Gemini client
+client = genai.Client(api_key=API_KEY)
+
+print("Gemini client setup successful!")
+
+
 # ---------------------------------------------------------------
-# NURU PRODUCT LINE MAP (shared context for the analysis prompt)
+# NURU PRODUCT LINE MAP
 # ---------------------------------------------------------------
+
 NURU_PRODUCT_LINES = """
 - Nuru Watoto: children 0-12 (bought by parents). Gentle, eczema-safe
   cleansing/moisturising. Hero products: fragrance-light cleanser,
@@ -46,13 +61,18 @@ NURU_PRODUCT_LINES = """
 # ---------------------------------------------------------------
 # STAGE 1 — ANALYSE THE FEEDBACK (R-T-C-C-O PROMPT)
 # ---------------------------------------------------------------
+
 def build_analysis_prompt(feedback_text: str) -> tuple[str, str]:
     """
-    Builds the Stage 1 prompt pair (system, user) using R-T-C-C-O.
-    Returns structured sentiment/theme/urgency/product-line data as JSON.
+    Builds the Stage 1 prompt pair using the R-T-C-C-O framework.
+
+    Returns:
+        system_prompt: Role section
+        user_prompt: Task, Context, Constraints and Output sections
     """
+
+    # R - Role
     system_prompt = (
-        # R - Role
         "You are a senior Customer Insight Analyst for Nuru, a Kenyan "
         "clinical & dermo-cosmetic skincare and haircare brand. You "
         "specialise in reading raw customer feedback and extracting "
@@ -60,6 +80,10 @@ def build_analysis_prompt(feedback_text: str) -> tuple[str, str]:
         "line the feedback relates to."
     )
 
+    # T - Task
+    # C - Context
+    # C - Constraints
+    # O - Output
     user_prompt = f"""
 # T - Task
 Analyse the customer feedback provided below and extract structured
@@ -81,11 +105,16 @@ Feedback to analyse:
 - overall_sentiment must be one of: "positive", "negative", "neutral", "mixed"
 - sentiment_score must be a number between -1.0 and 1.0
 - urgency_level must be one of: "low", "medium", "high"
-- product_line_match must be one of: "Nuru Watoto", "Nuru Fresh",
-  "Nuru Even", "Nuru Man", "Nuru Mature", "Nuru Roots",
+- product_line_match must be one of:
+  "Nuru Watoto",
+  "Nuru Fresh",
+  "Nuru Even",
+  "Nuru Man",
+  "Nuru Mature",
+  "Nuru Roots",
   "General / Not product-specific"
-- key_themes and products_mentioned must be arrays of short strings
-  (use an empty array if none apply)
+- key_themes and products_mentioned must be arrays of short strings.
+  Use an empty array if none apply.
 
 # O - Output format
 Return exactly this JSON shape:
@@ -99,45 +128,72 @@ Return exactly this JSON shape:
   "summary": "one sentence summary of the feedback"
 }}
 """
+
     return system_prompt, user_prompt
+
+
 # ---------------------------------------------------------------
-# CORE API CALL FUNCTION (Gemini)
+# CORE API CALL FUNCTION (NEW GOOGLE GENAI CLIENT)
 # ---------------------------------------------------------------
+
 def call_ai(system_prompt: str, user_prompt: str) -> str:
     """
-    Sends one request to the Gemini API and returns the raw text reply.
-    Gemini doesn't take a separate "system" argument the way some
-    other APIs do, so we combine the role/rules into one prompt string.
+    Sends one request to the Gemini API using the Google GenAI SDK.
+    Returns the raw text response.
     """
-    full_prompt = f"{system_prompt}\n\n{user_prompt}"
-    response = model.generate_content(full_prompt)
+
+    response = client.models.generate_content(
+        model=MODEL_NAME,
+        contents=user_prompt,
+        config=types.GenerateContentConfig(
+            system_instruction=system_prompt,
+            response_mime_type="application/json"
+        )
+    )
+
     return response.text
 
 
-def analyse_feedback(feedback_text: str) -> dict:
-    """
-    Runs Stage 1 end-to-end: builds the R-T-C-C-O prompt, calls the
-    AI, and parses the JSON response into a Python dictionary.
-    """
-    system_prompt, user_prompt = build_analysis_prompt(feedback_text)
-    raw_response = call_ai(system_prompt, user_prompt)
-    return parse_json_safely(raw_response)
 # ---------------------------------------------------------------
-# JSON PARSING FOR THE ANALYSIS RESPONSE
+# JSON PARSING
 # ---------------------------------------------------------------
+
 def parse_json_safely(raw_text: str) -> dict:
     """
-    Attempts to parse a string as JSON. Models sometimes wrap JSON in
-```json ... ``` code fences, so we strip those first.
-    Raises json.JSONDecodeError if the text still isn't valid JSON —
-    the caller is responsible for catching that (Shee's error
-    handling wraps this).
+    Safely parses Gemini's JSON response into a Python dictionary.
     """
+
     cleaned = raw_text.strip()
+
+    # Handle accidental markdown code fences
     if cleaned.startswith("```"):
         cleaned = cleaned.strip("`")
-        cleaned = cleaned.replace("json", "", 1).strip()
+
+        if cleaned.startswith("json"):
+            cleaned = cleaned[4:].strip()
+
     return json.loads(cleaned)
+
+
+# ---------------------------------------------------------------
+# ANALYSE CUSTOMER FEEDBACK
+# ---------------------------------------------------------------
+
+def analyse_feedback(feedback_text: str) -> dict:
+    """
+    Runs the complete Stage 1 analysis:
+    1. Builds the R-T-C-C-O prompt
+    2. Sends it to Gemini
+    3. Parses the JSON response
+    """
+
+    system_prompt, user_prompt = build_analysis_prompt(feedback_text)
+
+    raw_response = call_ai(
+        system_prompt,
+        user_prompt
+    )
+    return parse_json_safely(raw_response)
 # ---------------------------------------------------------------
 # STAGE 2 — TURN ANALYSIS INTO ACTION (R-T-C-C-O PROMPT)
 # ---------------------------------------------------------------
@@ -206,10 +262,63 @@ Return exactly this JSON shape:
 """
     return system_prompt, user_prompt
 
- def generate_action_plan(feedback_text: str, analysis: dict) -> str:
+
+def generate_action_plan(feedback_text: str, analysis: dict) -> dict:
     """
-    Runs Stage 2: builds the action prompt using Stage 1's analysis,
-    and calls the AI. Returns the raw (unparsed) text response.
+    Runs Stage 2 end-to-end: builds the action prompt, calls the AI,
+    and parses the JSON response into a Python dictionary.
     """
     system_prompt, user_prompt = build_action_prompt(feedback_text, analysis)
-    return call_ai(system_prompt, user_prompt)
+    raw_response = call_ai(system_prompt, user_prompt)
+    return parse_json_safely(raw_response)
+if __name__ == "__main__":
+
+    feedback = input("\nEnter customer feedback: ").strip()
+
+    if not feedback:
+        print("\nERROR: Customer feedback cannot be empty.")
+        sys.exit(1)
+
+    try:
+        # STAGE 1
+        analysis = analyse_feedback(feedback)
+
+        print("\n=== STAGE 1: ANALYSIS ===")
+        print(f"Sentiment: {analysis.get('overall_sentiment')} "
+              f"(score: {analysis.get('sentiment_score')})")
+        print(f"Product line: {analysis.get('product_line_match')}")
+        print(f"Urgency: {analysis.get('urgency_level')}")
+        print(f"Summary: {analysis.get('summary')}")
+        print("\nFull JSON:")
+        print(json.dumps(analysis, indent=2))
+
+        # STAGE 2
+        action_plan = generate_action_plan(feedback, analysis)
+
+        print("\n=== STAGE 2: RECOMMENDED ACTION ===")
+        print(f"Priority: {action_plan.get('priority_level')} | "
+              f"Team: {action_plan.get('assigned_team')}")
+        print(f"Suggested reply: {action_plan.get('suggested_customer_reply')}")
+        print("\nFull JSON:")
+        print(json.dumps(action_plan, indent=2))
+
+  
+
+        # Combine Stage 1 and Stage 2 results
+        final_result = {
+            "feedback": feedback,
+            "analysis": analysis,
+            "action_plan": action_plan
+        }
+
+        # Save final result to JSON
+        with open("nuru_result.json", "w", encoding="utf-8") as file:
+            json.dump(final_result, file, indent=2, ensure_ascii=False)
+
+        print("\nResult successfully saved to nuru_result.json")
+
+    except json.JSONDecodeError:
+        print("\nERROR: Gemini returned invalid JSON.")
+
+    except Exception as error:
+        print(f"\nERROR: Something went wrong: {error}") 
